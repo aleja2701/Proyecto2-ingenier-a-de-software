@@ -1,0 +1,1 @@
+select * from lis_db.patients_patient

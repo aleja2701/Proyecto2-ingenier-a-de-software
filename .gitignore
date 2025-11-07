@@ -1,0 +1,26 @@
+# Logs
+ingenieria-de-software-main/logs
+ingenieria-de-software-main/*.log
+ingenieria-de-software-main/npm-debug.log*
+ingenieria-de-software-main/yarn-debug.log*
+ingenieria-de-software-main/yarn-error.log*
+ingenieria-de-software-main/pnpm-debug.log*
+ingenieria-de-software-main/lerna-debug.log*
+
+ingenieria-de-software-main/node_modules
+ingenieria-de-software-main/dist
+ingenieria-de-software-main/dist-ssr
+ingenieria-de-software-main/*.local
+
+# Editor directories and files
+ingenieria-de-software-main/.vscode/*
+ingenieria-de-software-main/!.vscode/extensions.json
+ingenieria-de-software-main/.idea
+ingenieria-de-software-main/.DS_Store
+ingenieria-de-software-main/*.suo
+ingenieria-de-software-main/*.ntvs*
+ingenieria-de-software-main/*.njsproj
+ingenieria-de-software-main/*.sln
+ingenieria-de-software-main/*.sw?
+
+Backend/venv
