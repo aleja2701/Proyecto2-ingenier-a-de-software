@@ -21,6 +21,8 @@ export interface LabTechnician {
   name: string;
   title: ProfessionalTitle;
   phone: string;
+  // Optional backend numeric id when synced with the Django API
+  backendId?: number;
 }
 
 export interface LipidProfile {

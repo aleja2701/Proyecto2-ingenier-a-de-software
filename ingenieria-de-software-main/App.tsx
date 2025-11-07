@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Patient, LabTechnician, LipidProfile, ProfessionalTitle } from './types';
-import { patientService } from './src/services/api';
+import { patientService, specialistService, resultService } from './src/services/api';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
 import Results from './pages/Results';
@@ -35,6 +35,33 @@ const App: React.FC = () => {
   const [labTechnicians, setLabTechnicians] = useState<LabTechnician[]>(initialLabTechs);
   const [results, setResults] = useState<LipidProfile[]>(initialResults);
 
+  // Helper maps between backend title codes and our ProfessionalTitle enum
+  const codeToProfessionalTitle = (code: string): ProfessionalTitle => {
+    switch (code) {
+      case 'BACT':
+        return ProfessionalTitle.BACTERIOLOGIST;
+      case 'MICR':
+        return ProfessionalTitle.MICROBIOLOGIST;
+      case 'BIOL':
+        return ProfessionalTitle.BIOLOGIST;
+      default:
+        return ProfessionalTitle.BACTERIOLOGIST;
+    }
+  };
+
+  const professionalTitleToCode = (title: ProfessionalTitle): string => {
+    switch (title) {
+      case ProfessionalTitle.BACTERIOLOGIST:
+        return 'BACT';
+      case ProfessionalTitle.MICROBIOLOGIST:
+        return 'MICR';
+      case ProfessionalTitle.BIOLOGIST:
+        return 'BIOL';
+      default:
+        return 'BACT';
+    }
+  };
+
   // Patient CRUD
   // Load patients from backend on mount
   useEffect(() => {
@@ -53,8 +80,58 @@ const App: React.FC = () => {
         }));
         if (mapped.length) setPatients(mapped);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Error loading patients from backend:', err);
         // keep initialPatients if backend not available
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Load specialists (lab technicians) from backend on mount
+  useEffect(() => {
+    let mounted = true;
+    specialistService.getAll()
+      .then(res => {
+        if (!mounted) return;
+        // The backend returns internal_code, name, title (code), phone, id
+        const mapped: LabTechnician[] = res.data.map((s: any) => ({
+          id: s.internal_code || String(s.id),
+          name: s.name || '',
+          title: codeToProfessionalTitle(s.title || 'BACT'),
+          phone: s.phone || '',
+          backendId: s.id,
+        }));
+        if (mapped.length) setLabTechnicians(mapped);
+      })
+      .catch(err => {
+        console.error('Error loading specialists from backend:', err);
+        // keep initialLabTechs if backend not available
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Load results from backend on mount
+  useEffect(() => {
+    let mounted = true;
+    resultService.getAll()
+      .then(res => {
+        if (!mounted) return;
+        // Backend returns result objects with patient_details and specialist_details
+        const mapped: LipidProfile[] = res.data.map((r: any) => ({
+          id: String(r.id),
+          patientEntryCode: (r.patient_details && r.patient_details.admission_code) || '',
+          totalCholesterol: Number(r.total_cholesterol) || 0,
+          hdlCholesterol: Number(r.hdl_cholesterol) || 0,
+          ldlCholesterol: Number(r.ldl_cholesterol) || 0,
+          triglycerides: Number(r.triglycerides) || 0,
+          labTechnicianId: (r.specialist_details && r.specialist_details.internal_code) || '',
+          date: r.created_at || new Date().toISOString(),
+        }));
+        if (mapped.length) setResults(mapped);
+      })
+      .catch(err => {
+        console.error('Error loading results from backend:', err);
+        // keep initialResults if backend not available
       });
     return () => { mounted = false; };
   }, []);
@@ -81,6 +158,7 @@ const App: React.FC = () => {
       };
       setPatients(prev => [...prev, mapped]);
     } catch (err) {
+      console.error('Error creating patient via API:', err);
       // fallback to local-only behavior
       const newEntryCode = `P${(patients.length + 1).toString().padStart(4, '0')}`;
       setPatients(prev => [...prev, { ...patient, entryCode: newEntryCode }]);
@@ -110,6 +188,7 @@ const App: React.FC = () => {
         setPatients(prev => prev.map(x => x.id === mapped.id ? mapped : x));
         return;
       } catch (e) {
+        console.error('Error updating patient via API:', e);
         // fall through to local update
       }
     }
@@ -123,6 +202,7 @@ const App: React.FC = () => {
         setPatients(prev => prev.filter(p => p.id !== id));
         return;
       } catch (e) {
+        console.error('Error deleting patient via API:', e);
         // fallback to local delete
       }
     }
@@ -130,17 +210,184 @@ const App: React.FC = () => {
   };
   
   // LabTech CRUD
-  const addLabTechnician = (labTech: LabTechnician) => setLabTechnicians([...labTechnicians, labTech]);
-  const updateLabTechnician = (updatedLabTech: LabTechnician) => setLabTechnicians(labTechnicians.map(l => l.id === updatedLabTech.id ? updatedLabTech : l));
-  const deleteLabTechnician = (id: string) => setLabTechnicians(labTechnicians.filter(l => l.id !== id));
+  const addLabTechnician = (labTech: LabTechnician) => {
+    // attempt to persist to backend, but fall back to local-only
+    (async () => {
+      try {
+        const payload = {
+          internal_code: labTech.id,
+          name: labTech.name,
+          title: professionalTitleToCode(labTech.title),
+          phone: labTech.phone,
+        };
+        const res = await specialistService.create(payload);
+        const s = res.data;
+        const mapped: LabTechnician = {
+          id: s.internal_code || labTech.id,
+          name: s.name || labTech.name,
+          title: codeToProfessionalTitle(s.title || 'BACT'),
+          phone: s.phone || labTech.phone,
+          backendId: s.id,
+        };
+        setLabTechnicians(prev => [...prev, mapped]);
+        return;
+      } catch (e) {
+        console.error('Error creating specialist via API:', e);
+        setLabTechnicians(prev => [...prev, labTech]);
+      }
+    })();
+  };
+
+  const updateLabTechnician = (updatedLabTech: LabTechnician) => {
+    (async () => {
+      // If we have a backendId, update on server
+      const backendId = (updatedLabTech as any).backendId;
+      if (backendId) {
+        try {
+          const payload = {
+            internal_code: updatedLabTech.id,
+            name: updatedLabTech.name,
+            title: professionalTitleToCode(updatedLabTech.title),
+            phone: updatedLabTech.phone,
+          };
+          const res = await specialistService.update(String(backendId), payload);
+          const s = res.data;
+          const mapped: LabTechnician = {
+            id: s.internal_code || updatedLabTech.id,
+            name: s.name || updatedLabTech.name,
+            title: codeToProfessionalTitle(s.title || 'BACT'),
+            phone: s.phone || updatedLabTech.phone,
+            backendId: s.id || backendId,
+          };
+          setLabTechnicians(prev => prev.map(l => l.id === mapped.id ? mapped : l));
+          return;
+        } catch (e) {
+          console.error('Error updating specialist via API:', e);
+          // fall back to local update
+        }
+      }
+      setLabTechnicians(prev => prev.map(l => l.id === updatedLabTech.id ? updatedLabTech : l));
+    })();
+  };
+
+  const deleteLabTechnician = (id: string) => {
+    const found = labTechnicians.find(l => l.id === id);
+    if (found && (found as any).backendId) {
+      (async () => {
+        try {
+          await specialistService.delete(String((found as any).backendId));
+          setLabTechnicians(prev => prev.filter(l => l.id !== id));
+          return;
+        } catch (e) {
+          console.error('Error deleting specialist via API:', e);
+        }
+        // fallback local delete
+        setLabTechnicians(prev => prev.filter(l => l.id !== id));
+      })();
+      return;
+    }
+    setLabTechnicians(prev => prev.filter(l => l.id !== id));
+  };
 
   // Result CRUD
   const addResult = (result: Omit<LipidProfile, 'id' | 'date'>) => {
-    const newResult = { ...result, id: `R${(results.length + 1).toString().padStart(3, '0')}`, date: new Date().toISOString() };
-    setResults([...results, newResult]);
+    // Try to persist to backend using patient.backendId and specialist.backendId when available
+    (async () => {
+      try {
+        // find patient backend id from patients list
+        const patient = patients.find(p => p.entryCode === result.patientEntryCode);
+        const patientPk = patient && patient.backendId ? patient.backendId : undefined;
+        // find specialist backend id from labTechnicians list
+        const specialist = labTechnicians.find(l => l.id === result.labTechnicianId);
+        const specialistPk = specialist && (specialist as any).backendId ? (specialist as any).backendId : undefined;
+
+        if (patientPk && specialistPk) {
+          const payload = {
+            patient: patientPk,
+            specialist: specialistPk,
+            total_cholesterol: result.totalCholesterol,
+            hdl_cholesterol: result.hdlCholesterol,
+            ldl_cholesterol: result.ldlCholesterol,
+            triglycerides: result.triglycerides,
+          };
+          const res = await resultService.create(payload);
+          const r = res.data;
+          const mapped: LipidProfile = {
+            id: String(r.id),
+            patientEntryCode: (r.patient_details && r.patient_details.admission_code) || result.patientEntryCode,
+            totalCholesterol: Number(r.total_cholesterol) || result.totalCholesterol,
+            hdlCholesterol: Number(r.hdl_cholesterol) || result.hdlCholesterol,
+            ldlCholesterol: Number(r.ldl_cholesterol) || result.ldlCholesterol,
+            triglycerides: Number(r.triglycerides) || result.triglycerides,
+            labTechnicianId: (r.specialist_details && r.specialist_details.internal_code) || result.labTechnicianId,
+            date: r.created_at || new Date().toISOString(),
+          };
+          setResults(prev => [...prev, mapped]);
+          return;
+        }
+      } catch (e) {
+        console.error('Error creating result via API:', e);
+        // fallback to local-only below
+      }
+
+      const newResult = { ...result, id: `R${(results.length + 1).toString().padStart(3, '0')}`, date: new Date().toISOString() };
+      setResults(prev => [...prev, newResult]);
+    })();
   };
-  const updateResult = (updatedResult: LipidProfile) => setResults(results.map(r => r.id === updatedResult.id ? updatedResult : r));
-  const deleteResult = (id: string) => setResults(results.filter(r => r.id !== id));
+
+  const updateResult = (updatedResult: LipidProfile) => {
+    (async () => {
+      // if id looks like a backend id (numeric) try updating backend
+      const backendId = Number(updatedResult.id);
+      if (!Number.isNaN(backendId)) {
+        try {
+          // Map fields for API
+          const payload = {
+            total_cholesterol: updatedResult.totalCholesterol,
+            hdl_cholesterol: updatedResult.hdlCholesterol,
+            ldl_cholesterol: updatedResult.ldlCholesterol,
+            triglycerides: updatedResult.triglycerides,
+          };
+          const res = await resultService.update(String(backendId), payload);
+          const r = res.data;
+          const mapped: LipidProfile = {
+            id: String(r.id),
+            patientEntryCode: (r.patient_details && r.patient_details.admission_code) || updatedResult.patientEntryCode,
+            totalCholesterol: Number(r.total_cholesterol) || updatedResult.totalCholesterol,
+            hdlCholesterol: Number(r.hdl_cholesterol) || updatedResult.hdlCholesterol,
+            ldlCholesterol: Number(r.ldl_cholesterol) || updatedResult.ldlCholesterol,
+            triglycerides: Number(r.triglycerides) || updatedResult.triglycerides,
+            labTechnicianId: (r.specialist_details && r.specialist_details.internal_code) || updatedResult.labTechnicianId,
+            date: r.created_at || updatedResult.date,
+          };
+          setResults(prev => prev.map(x => x.id === mapped.id ? mapped : x));
+          return;
+        } catch (e) {
+          console.error('Error updating result via API:', e);
+        }
+      }
+      setResults(prev => prev.map(r => r.id === updatedResult.id ? updatedResult : r));
+    })();
+  };
+
+  const deleteResult = (id: string) => {
+    // if id is numeric, attempt delete on backend
+    const backendId = Number(id);
+    if (!Number.isNaN(backendId)) {
+      (async () => {
+        try {
+          await resultService.delete(String(backendId));
+          setResults(prev => prev.filter(r => r.id !== id));
+          return;
+        } catch (e) {
+          console.error('Error deleting result via API:', e);
+        }
+        setResults(prev => prev.filter(r => r.id !== id));
+      })();
+      return;
+    }
+    setResults(prev => prev.filter(r => r.id !== id));
+  };
 
   const renderPage = () => {
     switch (page) {
