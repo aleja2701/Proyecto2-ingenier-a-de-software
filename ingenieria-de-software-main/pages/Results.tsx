@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { LipidProfile, Patient, LabTechnician } from '../types';
 import { Page } from '../App';
 import { DownloadIcon, EditIcon, PlusIcon, SearchIcon, TrashIcon } from '../components/Icons';
@@ -46,7 +47,12 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
     if (isEditing) {
       const resultToUpdate = results.find(r => r.id === isEditing);
       if(resultToUpdate) {
-        updateResult({ ...formState, id: isEditing, date: resultToUpdate.date });
+        // prefer the numeric backend id saved in formState, otherwise fall back
+        // to the displayed id. This ensures App.updateResult sees a numeric id
+        // when the result originates from the backend and will call PUT.
+        const idToSend = formState.backendId ? String(formState.backendId) : isEditing;
+        console.debug('[Results] updating result', { idToSend, formState, isEditing });
+        updateResult({ ...formState, id: idToSend, date: resultToUpdate.date } as LipidProfile);
       }
     } else {
       addResult(formState);
@@ -84,6 +90,131 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
     setIsModalOpen(true);
   };
 
+  const handleDownloadPdf = async () => {
+    if (!selectedPatient) {
+      alert('Seleccione un paciente antes de descargar.');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      let y = margin;
+
+      // Function to load an image as HTMLImageElement
+      const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject(e);
+        img.src = src;
+      });
+
+      // Try to load logo.png placed in the same `pages` folder as this file using Vite's URL helper
+      let logoImg: HTMLImageElement | null = null;
+      try {
+        const logoUrl = new URL('./logo.png', import.meta.url).href;
+        console.debug('[PDF] Attempting to load logo from:', logoUrl);
+        logoImg = await loadImage(logoUrl);
+        console.debug('[PDF] Logo loaded, size:', logoImg.width, 'x', logoImg.height);
+      } catch (err) {
+        console.warn('[PDF] Logo not found or failed to load:', err);
+        logoImg = null;
+      }
+
+      // If we have a logo, center it horizontally and advance Y; otherwise continue
+      if (logoImg) {
+        const logoWidthMM = 150; // mm
+        const logoHeightMM = (logoImg.height / logoImg.width) * logoWidthMM;
+        const logoX = (pageWidth - logoWidthMM) / 2;
+        console.debug('[PDF] Adding logo to PDF at', { x: logoX, y, logoWidthMM, logoHeightMM });
+        doc.addImage(logoImg, 'PNG', logoX, y, logoWidthMM, logoHeightMM);
+        // move cursor below the logo
+        y += logoHeightMM + 6;
+      } else {
+        console.debug('[PDF] No logo image available, continuing without logo');
+      }
+
+  // Header (centered title below logo or at top if no logo)
+  // Use a sans-serif font (Helvetica) in bold for the PDF title
+  // jsPDF includes standard fonts like 'helvetica' which is sans-serif
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('Resultados de Perfil Lipídico', pageWidth / 2, y, { align: 'center' });
+  y += 12;
+  // reset to normal sans-serif for body text
+  doc.setFont('helvetica', 'normal');
+
+      doc.setFontSize(11);
+      doc.text(`Paciente: ${selectedPatient.name} ${selectedPatient.lastName}`, margin, y);
+      doc.text(`Documento: ${selectedPatient.id}`, pageWidth - margin, y, { align: 'right' });
+      y += 6;
+      doc.text(`Código Ingreso: ${selectedPatient.entryCode}`, margin, y);
+      y += 8;
+
+      // Table header
+      const tableCols = ['Fecha', 'Profesional', 'Col. Total', 'HDL', 'LDL', 'Triglicéridos'];
+      const colCount = tableCols.length;
+      const usableWidth = pageWidth - margin * 2;
+      const colWidth = usableWidth / colCount;
+
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      for (let i = 0; i < tableCols.length; i++) {
+        const x = margin + i * colWidth;
+        doc.text(tableCols[i], x + 1, y);
+      }
+      doc.setFont(undefined, 'normal');
+      y += 6;
+
+      // Divider
+      doc.setDrawColor(200);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y - 4, pageWidth - margin, y - 4);
+
+      // Rows
+      doc.setFontSize(11);
+      const resultsForPatient = patientResults;
+      if (resultsForPatient.length === 0) {
+        doc.text('No hay resultados registrados para este paciente.', margin, y);
+      } else {
+        for (const res of resultsForPatient) {
+          // Page break check
+          if (y > pageHeight - margin - 20) {
+            doc.addPage();
+            y = margin;
+          }
+
+          const fecha = new Date(res.date).toLocaleDateString();
+          const profesional = getLabTechName(res.labTechnicianId);
+
+          const row = [fecha, profesional, String(res.totalCholesterol), String(res.hdlCholesterol), String(res.ldlCholesterol), String(res.triglycerides)];
+          for (let i = 0; i < row.length; i++) {
+            const x = margin + i * colWidth;
+            const text = String(row[i]);
+            // wrap text if necessary
+            const split = doc.splitTextToSize(text, colWidth - 2);
+            doc.text(split, x + 1, y);
+          }
+
+          // advance y by the tallest cell (approx)
+          const cellHeights = row.map((cell) => doc.splitTextToSize(String(cell), colWidth - 2).length);
+          const maxLines = Math.max(...cellHeights);
+          y += maxLines * 6; // line height approx 6mm
+          y += 2; // spacing
+        }
+      }
+
+      const fileName = `resultados_${selectedPatient.entryCode}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Error generando PDF estructurado:', error);
+      alert('Ocurrió un error al generar el PDF. Revise la consola para más detalles.');
+    }
+  };
+
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -110,7 +241,7 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-slate-800">Resultados de Perfil Lipídico</h1>
+        <h1 style={{ fontFamily: "Arial, Helvetica, sans-serif" }} className="text-3xl font-bold text-slate-800">Resultados de Perfil Lipídico</h1>
         <button onClick={() => setPage(Page.DASHBOARD)} className="text-blue-600 hover:underline">Volver al inicio</button>
       </div>
 
@@ -128,10 +259,10 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
                       <option value="">Seleccione Paciente</option>
                       {patients.map(p => <option key={p.entryCode} value={p.entryCode}>{p.entryCode} - {p.name} {p.lastName}</option>)}
                   </select>
-                  <input type="number" name="totalCholesterol" value={formState.totalCholesterol} onChange={handleInputChange} placeholder="Colesterol Total" className="p-2 border rounded border-slate-300" />
-                  <input type="number" name="hdlCholesterol" value={formState.hdlCholesterol} onChange={handleInputChange} placeholder="Colesterol HDL" className="p-2 border rounded border-slate-300" />
-                  <input type="number" name="ldlCholesterol" value={formState.ldlCholesterol} onChange={handleInputChange} placeholder="Colesterol LDL" className="p-2 border rounded border-slate-300" />
-                  <input type="number" name="triglycerides" value={formState.triglycerides} onChange={handleInputChange} placeholder="Triglicéridos" className="p-2 border rounded border-slate-300" />
+                  <input type="number" step="0.1" name="totalCholesterol" value={formState.totalCholesterol} onChange={handleInputChange} placeholder="Colesterol Total" className="p-2 border rounded border-slate-300" />
+                  <input type="number" step="0.1" name="hdlCholesterol" value={formState.hdlCholesterol} onChange={handleInputChange} placeholder="Colesterol HDL" className="p-2 border rounded border-slate-300" />
+                  <input type="number" step="0.1" name="ldlCholesterol" value={formState.ldlCholesterol} onChange={handleInputChange} placeholder="Colesterol LDL" className="p-2 border rounded border-slate-300" />
+                  <input type="number" step="0.1" name="triglycerides" value={formState.triglycerides} onChange={handleInputChange} placeholder="Triglicéridos" className="p-2 border rounded border-slate-300" />
                   <select name="labTechnicianId" value={formState.labTechnicianId} onChange={handleInputChange} className="p-2 border rounded border-slate-300" required>
                       <option value="">Seleccione Profesional</option>
                       {labTechnicians.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -219,7 +350,7 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
             {patientResults.length > 0 ? patientResults.map((result, index) => (
               <div key={result.id} className={`p-4 rounded-lg bg-slate-50 ${index < patientResults.length - 1 ? 'mb-4' : ''}`}>
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-slate-600">Análisis del {new Date(result.date).toLocaleString()}</h3>
+                    <h3 className="font-semibold text-slate-600">Análisis del {new Date(result.date).toLocaleDateString()}</h3>
                     <span className="text-sm text-slate-500">Profesional: {getLabTechName(result.labTechnicianId)}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
@@ -231,7 +362,7 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
               </div>
             )) : <p>No hay resultados registrados para este paciente.</p>}
             <div className="mt-6 flex justify-end">
-              <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
+              <button onClick={handleDownloadPdf} className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
                 <DownloadIcon className="w-5 h-5 mr-2"/>
                 Descargar PDF
               </button>

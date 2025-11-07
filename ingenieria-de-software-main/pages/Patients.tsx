@@ -12,10 +12,11 @@ interface PatientsProps {
   setPage: (page: Page) => void;
 }
 
-const emptyPatient: Omit<Patient, 'entryCode'> = { id: '', name: '', lastName: '', address: '', phone: '' };
+// Include optional backendId in the local form state so edits can preserve it
+const emptyPatient: Omit<Patient, 'entryCode'> & { backendId?: number } = { id: '', name: '', lastName: '', address: '', phone: '' };
 
 const Patients: React.FC<PatientsProps> = ({ patients, addPatient, updatePatient, deletePatient, setPage }) => {
-  const [formState, setFormState] = useState<Omit<Patient, 'entryCode'>>(emptyPatient);
+  const [formState, setFormState] = useState<Omit<Patient, 'entryCode'> & { backendId?: number }>(emptyPatient);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -34,7 +35,8 @@ const Patients: React.FC<PatientsProps> = ({ patients, addPatient, updatePatient
     if (isEditing) {
       const patientToUpdate = patients.find(p => p.id === isEditing);
       if(patientToUpdate) {
-        updatePatient({ ...formState, id: isEditing, entryCode: patientToUpdate.entryCode });
+        // include backendId so the App layer can call the backend PUT when available
+        updatePatient({ ...formState, id: isEditing, entryCode: patientToUpdate.entryCode, backendId: patientToUpdate.backendId } as Patient);
       }
     } else {
       if (patients.some(p => p.id === formState.id)) {
@@ -53,7 +55,9 @@ const Patients: React.FC<PatientsProps> = ({ patients, addPatient, updatePatient
         name: patient.name,
         lastName: patient.lastName,
         address: patient.address,
-        phone: patient.phone
+        phone: patient.phone,
+        // preserve backendId for update
+        backendId: patient.backendId
     });
   };
 

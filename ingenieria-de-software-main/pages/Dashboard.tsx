@@ -1,12 +1,14 @@
 import React from 'react';
 import { Page } from '../App';
-import { ChevronRightIcon, DashboardIcon, LabIcon, PatientIcon, ResultsIcon } from '../components/Icons';
+import { ChevronRightIcon, LabIcon, LogoutIcon, PatientIcon, ResultsIcon } from '../components/Icons';
 
 interface DashboardProps {
   setPage: (page: Page) => void;
+  onLogout: () => void;
+  displayName?: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ setPage }) => {
+const Dashboard: React.FC<DashboardProps> = ({ setPage, onLogout, displayName }) => {
   const cards = [
     {
       page: Page.PATIENTS,
@@ -30,7 +32,22 @@ const Dashboard: React.FC<DashboardProps> = ({ setPage }) => {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="text-3xl font-bold text-slate-800 mb-6">Página Principal</h1>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Página Principal</h1>
+          {displayName && (
+            <p className="text-slate-600 mt-1">Bienvenido/a {displayName}</p>
+          )}
+        </div>
+        <button
+            onClick={onLogout}
+            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors shadow-md"
+            aria-label="Cerrar sesión"
+        >
+            <LogoutIcon className="w-5 h-5 mr-2" />
+            Cerrar Sesión
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cards.map((card, index) => (
           <button

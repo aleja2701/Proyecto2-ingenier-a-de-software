@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
 import Results from './pages/Results';
 import LabTechs from './pages/LabTechs';
+import Login from './pages/Login';
 import { DashboardIcon, LabIcon, PatientIcon, ResultsIcon } from './components/Icons';
 
 export enum Page {
@@ -30,10 +31,31 @@ const initialResults: LipidProfile[] = [
 ];
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(Page.DASHBOARD);
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
   const [labTechnicians, setLabTechnicians] = useState<LabTechnician[]>(initialLabTechs);
   const [results, setResults] = useState<LipidProfile[]>(initialResults);
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setPage(Page.DASHBOARD); // Reset page for next login
+    setCurrentUser(null);
+    setCurrentUserDisplayName(null);
+  };
+
+  const usernameToDisplayName = (username: string | null) => {
+    if (!username) return null;
+    switch (username.toLowerCase()) {
+      case 'aleja': return 'Alejandra';
+      case 'meli': return 'Melina';
+      case 'juanpi': return 'Juan';
+      case 'admin': return 'Administrador';
+      default: return username;
+    }
+  };
 
   // Helper maps between backend title codes and our ProfessionalTitle enum
   const codeToProfessionalTitle = (code: string): ProfessionalTitle => {
@@ -78,7 +100,9 @@ const App: React.FC = () => {
           phone: p.phone || '',
           backendId: p.id,
         }));
-        if (mapped.length) setPatients(mapped);
+        // Assign backend state even when the returned list is empty so the UI
+        // reflects the server state (avoid silently keeping local mocks).
+        setPatients(mapped);
       })
       .catch((err) => {
         console.error('Error loading patients from backend:', err);
@@ -101,7 +125,8 @@ const App: React.FC = () => {
           phone: s.phone || '',
           backendId: s.id,
         }));
-        if (mapped.length) setLabTechnicians(mapped);
+        // Always set the mapped state so updates use the correct backendId when present.
+        setLabTechnicians(mapped);
       })
       .catch(err => {
         console.error('Error loading specialists from backend:', err);
@@ -127,7 +152,9 @@ const App: React.FC = () => {
           labTechnicianId: (r.specialist_details && r.specialist_details.internal_code) || '',
           date: r.created_at || new Date().toISOString(),
         }));
-        if (mapped.length) setResults(mapped);
+        // Set mapped results even if the backend returns an empty list so the
+        // UI state represents the server state instead of keeping local mocks.
+        setResults(mapped);
       })
       .catch(err => {
         console.error('Error loading results from backend:', err);
@@ -341,13 +368,23 @@ const App: React.FC = () => {
       const backendId = Number(updatedResult.id);
       if (!Number.isNaN(backendId)) {
         try {
-          // Map fields for API
-          const payload = {
+          // find backend PKs for patient and specialist so PUT contains required fields
+          const patientObj = patients.find(p => p.entryCode === updatedResult.patientEntryCode);
+          const patientPk = patientObj && patientObj.backendId ? patientObj.backendId : undefined;
+          const specialistObj = labTechnicians.find(l => l.id === updatedResult.labTechnicianId);
+          const specialistPk = specialistObj && (specialistObj as any).backendId ? (specialistObj as any).backendId : undefined;
+
+          // Map fields for API. Include patient/specialist when available because
+          // the serializer expects them on PUT; otherwise the server may return 400.
+          const payload: any = {
             total_cholesterol: updatedResult.totalCholesterol,
             hdl_cholesterol: updatedResult.hdlCholesterol,
             ldl_cholesterol: updatedResult.ldlCholesterol,
             triglycerides: updatedResult.triglycerides,
           };
+          if (patientPk) payload.patient = patientPk;
+          if (specialistPk) payload.specialist = specialistPk;
+
           const res = await resultService.update(String(backendId), payload);
           const r = res.data;
           const mapped: LipidProfile = {
@@ -399,7 +436,7 @@ const App: React.FC = () => {
         return <LabTechs labTechnicians={labTechnicians} addLabTechnician={addLabTechnician} updateLabTechnician={updateLabTechnician} deleteLabTechnician={deleteLabTechnician} setPage={setPage} />;
       case Page.DASHBOARD:
       default:
-        return <Dashboard setPage={setPage} />;
+        return <Dashboard setPage={setPage} onLogout={handleLogout} displayName={currentUserDisplayName || undefined} />;
     }
   };
 
@@ -418,6 +455,14 @@ const App: React.FC = () => {
       </button>
     );
   };
+
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={(username) => {
+      setIsAuthenticated(true);
+      setCurrentUser(username);
+      setCurrentUserDisplayName(usernameToDisplayName(username));
+    }} />;
+  }
   
   return (
     <div className="flex h-screen font-sans">
