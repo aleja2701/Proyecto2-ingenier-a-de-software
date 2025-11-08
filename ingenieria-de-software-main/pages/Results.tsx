@@ -250,28 +250,55 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
         <TabButton tab="consult" label="Consultar Resultados" />
       </div>
 
-      {activeTab === 'entry' && (
+     {activeTab === 'entry' && (
         <div className="pt-6">
             <div className="bg-white p-6 rounded-lg shadow-md mb-8">
                 <h2 className="text-xl font-semibold text-slate-700 mb-4">{isEditing ? 'Actualizar Resultado' : 'Nuevo Resultado'}</h2>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <select name="patientEntryCode" value={formState.patientEntryCode} onChange={handleInputChange} className="p-2 border rounded border-slate-300" required>
-                      <option value="">Seleccione Paciente</option>
-                      {patients.map(p => <option key={p.entryCode} value={p.entryCode}>{p.entryCode} - {p.name} {p.lastName}</option>)}
-                  </select>
-                  <input type="number" step="0.1" name="totalCholesterol" value={formState.totalCholesterol} onChange={handleInputChange} placeholder="Colesterol Total" className="p-2 border rounded border-slate-300" />
-                  <input type="number" step="0.1" name="hdlCholesterol" value={formState.hdlCholesterol} onChange={handleInputChange} placeholder="Colesterol HDL" className="p-2 border rounded border-slate-300" />
-                  <input type="number" step="0.1" name="ldlCholesterol" value={formState.ldlCholesterol} onChange={handleInputChange} placeholder="Colesterol LDL" className="p-2 border rounded border-slate-300" />
-                  <input type="number" step="0.1" name="triglycerides" value={formState.triglycerides} onChange={handleInputChange} placeholder="Triglicéridos" className="p-2 border rounded border-slate-300" />
-                  <select name="labTechnicianId" value={formState.labTechnicianId} onChange={handleInputChange} className="p-2 border rounded border-slate-300" required>
-                      <option value="">Seleccione Profesional</option>
-                      {labTechnicians.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <div className="md:col-span-3 flex justify-end space-x-2">
-                    <button type="button" onClick={handleClear} className="px-4 py-2 bg-slate-500 text-white rounded hover:bg-slate-600 transition-colors">Limpiar</button>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">{isEditing ? 'Actualizar' : 'Guardar'}</button>
-                  </div>
-                </form>
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        
+          <div className="md:col-span-2">
+            <label htmlFor="patientEntryCode" className="block text-sm font-medium text-slate-700 mb-1">Paciente (Código de Ingreso)</label>
+            <select id="patientEntryCode" name="patientEntryCode" value={formState.patientEntryCode} onChange={handleInputChange} className="w-full p-2 border rounded border-slate-300" required>
+              <option value="">Seleccione un paciente</option>
+              {patients.map(p => <option key={p.entryCode} value={p.entryCode}>{p.entryCode} - {p.name} {p.lastName}</option>)}
+            </select>
+          </div>
+
+          {/* Fila 2: Colesterol Total y HDL (lado a lado) */}
+          <div>
+            <label htmlFor="totalCholesterol" className="block text-sm font-medium text-slate-700 mb-1">Colesterol Total (mg/dL)</label>
+            <input type="number" step="0.1" min="0" id="totalCholesterol" name="totalCholesterol" value={formState.totalCholesterol} onChange={handleInputChange} placeholder="Ej: 200.5" className="w-full p-2 border rounded border-slate-300" />
+          </div>
+          <div>
+            <label htmlFor="hdlCholesterol" className="block text-sm font-medium text-slate-700 mb-1">Colesterol HDL (mg/dL)</label>
+            <input type="number" step="0.1" min="0" id="hdlCholesterol" name="hdlCholesterol" value={formState.hdlCholesterol} onChange={handleInputChange} placeholder="Ej: 50.0" className="w-full p-2 border rounded border-slate-300" />
+          </div>
+
+          {/* Fila 3: Colesterol LDL y Triglicéridos (lado a lado) */}
+          <div>
+            <label htmlFor="ldlCholesterol" className="block text-sm font-medium text-slate-700 mb-1">Colesterol LDL (mg/dL)</label>
+            <input type="number" step="0.1" min="0" id="ldlCholesterol" name="ldlCholesterol" value={formState.ldlCholesterol} onChange={handleInputChange} placeholder="Ej: 130.2" className="w-full p-2 border rounded border-slate-300" />
+          </div>
+          <div>
+            <label htmlFor="triglycerides" className="block text-sm font-medium text-slate-700 mb-1">Triglicéridos (mg/dL)</label>
+            <input type="number" step="0.1" min="0" id="triglycerides" name="triglycerides" value={formState.triglycerides} onChange={handleInputChange} placeholder="Ej: 150.2" className="w-full p-2 border rounded border-slate-300" />
+          </div>
+
+          {/* Fila 4: Profesional asignado (ancho completo) */}
+          <div className="md:col-span-2">
+            <label htmlFor="labTechnicianId" className="block text-sm font-medium text-slate-700 mb-1">Profesional Asignado</label>
+            <select id="labTechnicianId" name="labTechnicianId" value={formState.labTechnicianId} onChange={handleInputChange} className="w-full p-2 border rounded border-slate-300" required>
+              <option value="">Seleccione un profesional</option>
+              {labTechnicians.map(l => <option key={l.id} value={l.id}>{l.name} - {l.title}</option>)}
+            </select>
+          </div>
+
+          {/* Botones: ancho completo en escritorio */}
+          <div className="md:col-span-2 flex justify-end space-x-2">
+            <button type="button" onClick={handleClear} className="px-4 py-2 bg-slate-500 text-white rounded hover:bg-slate-600 transition-colors">Limpiar</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">{isEditing ? 'Actualizar' : 'Guardar'}</button>
+          </div>
+        </form>
             </div>
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold text-slate-700 mb-4">Resultados Registrados</h2>
