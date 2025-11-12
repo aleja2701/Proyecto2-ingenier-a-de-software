@@ -24,3 +24,4 @@ ingenieria-de-software-main/*.sln
 ingenieria-de-software-main/*.sw?
 
 Backend/venv
+Backend/__pycache__/

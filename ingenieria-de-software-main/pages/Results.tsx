@@ -47,12 +47,7 @@ const Results: React.FC<ResultsProps> = ({ results, patients, labTechnicians, ad
     if (isEditing) {
       const resultToUpdate = results.find(r => r.id === isEditing);
       if(resultToUpdate) {
-        // prefer the numeric backend id saved in formState, otherwise fall back
-        // to the displayed id. This ensures App.updateResult sees a numeric id
-        // when the result originates from the backend and will call PUT.
-        const idToSend = formState.backendId ? String(formState.backendId) : isEditing;
-        console.debug('[Results] updating result', { idToSend, formState, isEditing });
-        updateResult({ ...formState, id: idToSend, date: resultToUpdate.date } as LipidProfile);
+        updateResult({ ...formState, id: isEditing, date: resultToUpdate.date });
       }
     } else {
       addResult(formState);
